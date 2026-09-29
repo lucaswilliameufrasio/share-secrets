@@ -188,6 +188,6 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	log.Printf("listening on %s (secret TTL %s)", addr, ttl)
+	log.Print("server started")
 	log.Fatal(srv.ListenAndServe())
 }

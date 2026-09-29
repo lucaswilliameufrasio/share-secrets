@@ -174,3 +174,22 @@ func BenchmarkSecretStoreConsume(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkSecretStoreConcurrentConsume(b *testing.B) {
+	p := validPayload()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			store := newSecretStore(time.Hour)
+			id, _, err := store.create(p.Ciphertext, p.IV)
+			if err != nil {
+				b.Error(err)
+				return
+			}
+			if _, ok := store.consume(id); !ok {
+				b.Error("consume failed")
+				return
+			}
+		}
+	})
+}
