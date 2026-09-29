@@ -24,6 +24,8 @@ Abra <http://localhost:8080>.
 
 ## Testes e verificações
 
+O workflow do GitHub Actions executa automaticamente formato, vet, testes com race detector, build, lint, verificações de segurança, E2E e auditoria npm em push e pull request.
+
 Os comandos mais usados também estão disponíveis no `Makefile` (`make help` lista os alvos):
 
 ```sh

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install pinned Go toolchain with mise
+        uses: jdx/mise-action@v2
+
+      - name: Prepare development tools
+        run: make setup
+
+      - name: Install Chromium system dependencies
+        run: npx playwright install-deps chromium
+
+      - name: Format, vet, race tests, and build
+        run: make all
+
+      - name: Lint
+        run: make lint
+
+      - name: Security checks
+        run: make security
+
+      - name: End-to-end tests
+        run: make e2e
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=moderate
