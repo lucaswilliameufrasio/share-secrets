@@ -1,3 +1,3 @@
 module share-secrets
 
-go 1.23
+go 1.27.1

@@ -179,7 +179,15 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-	srv := &http.Server{Addr: addr, Handler: (&server{store: newSecretStore(ttl)}).routes(), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           (&server{store: newSecretStore(ttl)}).routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	log.Printf("listening on %s (secret TTL %s)", addr, ttl)
 	log.Fatal(srv.ListenAndServe())
 }

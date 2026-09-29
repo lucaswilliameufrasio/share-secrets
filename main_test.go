@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,5 +89,88 @@ func TestConcurrentConsumeReturnsSecretToSingleCaller(t *testing.T) {
 	}
 	if first, second := <-results, <-results; first == second {
 		t.Fatalf("expected exactly one successful consume, got %v and %v", first, second)
+	}
+}
+
+func TestSecretStoreRejectsInvalidPayloads(t *testing.T) {
+	store := newSecretStore(time.Hour)
+	for _, tc := range []struct{ ciphertext, iv string }{
+		{"", "aXY"}, {"not base64!", "aXY"},
+		{base64.RawURLEncoding.EncodeToString([]byte("short")), "aXY"},
+		{base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef")), "short"},
+	} {
+		if _, _, err := store.create(tc.ciphertext, tc.iv); err == nil {
+			t.Errorf("create(%q, %q) unexpectedly succeeded", tc.ciphertext, tc.iv)
+		}
+	}
+}
+
+func TestSecretStoreCapacityAndExpiredCleanup(t *testing.T) {
+	store := newSecretStore(time.Minute)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	p := validPayload()
+	for range maxActiveSecrets {
+		if _, _, err := store.create(p.Ciphertext, p.IV); err != nil {
+			t.Fatalf("fill store: %v", err)
+		}
+	}
+	if _, _, err := store.create(p.Ciphertext, p.IV); err == nil {
+		t.Fatal("expected full store error")
+	}
+	now = now.Add(time.Minute)
+	if _, _, err := store.create(p.Ciphertext, p.IV); err != nil {
+		t.Fatalf("expired entries should be cleaned: %v", err)
+	}
+}
+
+func TestCreateEndpointRejectsUnknownAndOversizedRequests(t *testing.T) {
+	handler := (&server{store: newSecretStore(time.Hour)}).routes()
+	for _, body := range []string{`{"ciphertext":"x","iv":"y","extra":true}`, strings.Repeat("x", maxPayloadBytes+1)} {
+		req := httptest.NewRequest(http.MethodPost, "/api/secrets", strings.NewReader(body))
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		if res.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", res.Code)
+		}
+	}
+}
+
+func TestSecurityHeadersAndStaticPage(t *testing.T) {
+	handler := (&server{store: newSecretStore(time.Hour)}).routes()
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /: %d", res.Code)
+	}
+	for key, want := range map[string]string{"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"} {
+		if got := res.Header().Get(key); got != want {
+			t.Errorf("%s=%q, want %q", key, got, want)
+		}
+	}
+}
+
+func BenchmarkSecretStoreCreate(b *testing.B) {
+	p := validPayload()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, _, err := newSecretStore(time.Hour).create(p.Ciphertext, p.IV); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSecretStoreConsume(b *testing.B) {
+	p := validPayload()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		store := newSecretStore(time.Hour)
+		id, _, err := store.create(p.Ciphertext, p.IV)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, ok := store.consume(id); !ok {
+			b.Fatal("consume failed")
+		}
 	}
 }
