@@ -11,6 +11,16 @@ test('cria um link e consome o segredo uma única vez', async ({ page, context }
   await expect(page.locator('#secret')).toHaveValue('');
 
   const secretURL = await link.inputValue();
+  const corruptedURL = new URL(secretURL);
+  const [id, key] = corruptedURL.hash.slice(1).split('.');
+  const replacement = key[0] === 'A' ? 'B' : 'A';
+  corruptedURL.hash = `${id}.${replacement}${key.slice(1)}`;
+
+  const badLinkPage = await context.newPage();
+  await badLinkPage.goto(corruptedURL.toString());
+  await expect(badLinkPage.locator('#status')).toContainText('continua disponível para tentar novamente');
+  await expect(badLinkPage.locator('#opened-secret')).toBeHidden();
+
   const recipient = await context.newPage();
   await recipient.goto(secretURL);
   await expect(recipient.locator('#opened-secret')).toHaveText(secret);
