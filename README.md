@@ -27,13 +27,15 @@ Abra <http://localhost:8080>.
 Os comandos mais usados também estão disponíveis no `Makefile` (`make help` lista os alvos):
 
 ```sh
-make setup       # mise + dependências npm + Chromium
+make setup       # Go via mise, ferramentas Go pinadas + npm + Chromium
 make test        # testes Go sem cache
 make test-race   # detector de data races
 make check build # formatação, vet e build
 make security    # govulncheck + gosec
 make bench       # benchmarks com alocações
 make e2e         # fluxo real com Playwright
+make lint        # golangci-lint, sem instalação global
+# make tools-update # atualizar ferramentas; revisar go.mod/go.sum
 
 # Equivalentes Go diretos
 go test -count=1 ./...

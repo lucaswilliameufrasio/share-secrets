@@ -1,7 +1,7 @@
 GO ?= mise exec -- go
 NPM ?= npm
 
-.PHONY: all setup fmt check vet lint build run test test-unit test-race coverage bench \
+.PHONY: all setup tools-update fmt check vet lint build run test test-unit test-race coverage bench \
 	security security-vuln security-static e2e e2e-install clean help
 
 all: fmt check test-race build
@@ -10,8 +10,17 @@ all: fmt check test-race build
 setup:
 	mise install
 	$(GO) mod download
+	$(GO) tool golangci-lint --version
+	$(GO) tool govulncheck -version
+	$(GO) tool gosec -version
 	$(NPM) ci
 	$(NPM) exec playwright install chromium
+
+## Update pinned Go development tools; review and commit go.mod/go.sum afterwards.
+tools-update:
+	$(GO) get -tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
+		github.com/securego/gosec/v2/cmd/gosec@latest \
+		golang.org/x/vuln/cmd/govulncheck@latest
 
 ## Format Go source files.
 fmt:
@@ -25,9 +34,8 @@ check:
 vet:
 	$(GO) vet ./...
 
-## Optional golangci-lint (requires golangci-lint in PATH).
 lint:
-	golangci-lint run ./...
+	$(GO) tool golangci-lint run ./...
 
 build:
 	$(GO) build ./...
@@ -53,10 +61,10 @@ bench:
 security: security-vuln security-static
 
 security-vuln:
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	$(GO) tool govulncheck ./...
 
 security-static:
-	$(GO) run github.com/securego/gosec/v2/cmd/gosec@latest ./...
+	$(GO) tool gosec ./...
 
 e2e:
 	$(NPM) run test:e2e
