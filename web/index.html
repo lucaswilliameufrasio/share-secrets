@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Compartilhar segredo</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header><span class="eyebrow">COMPARTILHAMENTO TEMPORÁRIO</span><h1>Um segredo.<br>Uma leitura.</h1><p>O conteúdo é cifrado neste navegador. O servidor recebe apenas dados cifrados e apaga o link depois da primeira abertura.</p></header>
+      <section id="create-view" class="panel">
+        <label for="secret">Segredo</label>
+        <textarea id="secret" rows="7" placeholder="Cole aqui a credencial ou mensagem" autocomplete="off" spellcheck="false"></textarea>
+        <button id="create-button" type="button">Criar link descartável</button>
+        <p class="hint">Expira em 1 hora. Envie o link por um canal privado.</p>
+      </section>
+      <section id="result-view" class="panel" hidden>
+        <h2>Link pronto</h2><p>Copie e envie para a pessoa. Ele só pode ser aberto uma vez.</p>
+        <input id="share-link" readonly aria-label="Link para compartilhar"><button id="copy-button" type="button">Copiar link</button>
+      </section>
+      <section id="open-view" class="panel" hidden><h2>Segredo recebido</h2><pre id="opened-secret"></pre><p class="hint">Este conteúdo foi removido do servidor e não poderá ser aberto novamente.</p></section>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+  </body>
+</html>
