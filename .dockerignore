@@ -1,0 +1,9 @@
+.git
+.github
+.mise.toml
+node_modules
+npm-debug.log
+playwright-report
+test-results
+coverage.out
+share-secrets

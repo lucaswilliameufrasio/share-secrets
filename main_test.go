@@ -298,6 +298,15 @@ func TestSecurityHeadersAndStaticPage(t *testing.T) {
 	}
 }
 
+func TestHealthEndpoint(t *testing.T) {
+	handler := (&server{store: newSecretStore(time.Hour)}).routes()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("GET /healthz status=%d, want %d", response.Code, http.StatusNoContent)
+	}
+}
+
 func BenchmarkSecretStoreCreate(b *testing.B) {
 	p := validPayload()
 	b.ReportAllocs()

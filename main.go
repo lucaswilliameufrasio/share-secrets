@@ -188,6 +188,9 @@ type server struct {
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("POST /api/secrets", s.createSecret)
 	mux.HandleFunc("GET /api/secrets/{id}", s.claimSecret)
 	mux.HandleFunc("POST /api/secrets/{id}/ack", s.acknowledgeSecret)
@@ -295,6 +298,19 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		client := http.Client{Timeout: time.Second}
+		response, err := client.Get("http://127.0.0.1:8080/healthz")
+		if err != nil {
+			log.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusNoContent {
+			log.Fatalf("unexpected healthcheck status: %s", response.Status)
+		}
+		return
+	}
+
 	ttl := defaultTTL
 	if value := os.Getenv("SECRET_TTL"); value != "" {
 		parsed, err := time.ParseDuration(value)

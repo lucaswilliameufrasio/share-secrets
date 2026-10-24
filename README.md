@@ -13,7 +13,7 @@ Ferramenta temporária para compartilhar uma credencial quando a pessoa não con
 
 ## Executar localmente
 
-Requer Go 1.27.1 (a versão local é fixada em `.mise.toml`) e Node.js/npm somente para os testes E2E.
+Requer Go 1.27.3 (a versão local é fixada em `.mise.toml`) e Node.js 24/npm somente para os testes E2E.
 
 ```sh
 mise install
@@ -46,6 +46,20 @@ go test -race -count=1 ./...
 ```
 
 O E2E sobe a aplicação localmente e verifica criação, descriptografia no navegador e consumo único — inclusive que uma chave alterada não consome o segredo e permite tentar o link original. Os benchmarks são diagnósticos, não um limite de performance fixo.
+
+## Deploy com Docker Compose
+
+Requer Docker Engine com Compose v2. O serviço publica a porta `8080` apenas no loopback por padrão; coloque um proxy reverso com TLS na frente. Ajuste `APP_PORT` se necessário e `SECRET_TTL` para alterar a validade dos links.
+
+```sh
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+A imagem é compilada em múltiplos estágios e executa um binário estático como usuário não-root, sem shell, em filesystem somente leitura. O healthcheck verifica `/healthz`. O serviço é intencionalmente uma única instância: não há persistência nem compartilhamento dos segredos entre réplicas, e reiniciar ou recriar o contêiner invalida os links ativos.
+
+Para atualizar, rode `docker compose up -d --build`; para parar, `docker compose down` (não há volume de dados para remover).
 
 ## Expor temporariamente com Tailscale Funnel
 
