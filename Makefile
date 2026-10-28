@@ -2,7 +2,7 @@ GO ?= mise exec -- go
 NPM ?= npm
 
 .PHONY: all setup tools-update fmt check vet lint build run test test-unit test-race coverage bench \
-	security security-vuln security-static e2e e2e-install clean help
+	security security-vuln security-static e2e e2e-install deploy clean help
 
 all: fmt check test-race build
 
@@ -42,6 +42,10 @@ build:
 
 run:
 	$(GO) run .
+
+## Deploy to a VPS with the interactive blue-green CLI.
+deploy:
+	$(GO) run ./cmd/deploy
 
 test: test-unit
 

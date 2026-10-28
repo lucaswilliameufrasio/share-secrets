@@ -23,6 +23,8 @@ go run .
 
 Abra <http://localhost:8080>.
 
+O site detecta inglês ou português do Brasil pelas preferências do navegador; o seletor no topo permite trocar o idioma e salva a escolha neste navegador.
+
 ## Testes e verificações
 
 O workflow do GitHub Actions executa automaticamente formato, vet, testes com race detector, build, lint, verificações de segurança, E2E e auditoria npm em push e pull request.
@@ -61,21 +63,29 @@ A imagem é compilada em múltiplos estágios e executa um binário estático co
 
 Para atualizar, rode `docker compose up -d --build`; para parar, `docker compose down` (não há volume de dados para remover).
 
+## Deploy blue/green em VPS
+
+Para publicar atrás do Nginx Proxy Manager em outra VPS da tailnet, use a CLI Go interativa. Ela pede o alias SSH configurado na máquina do operador e o slot que está recebendo tráfego; não há hostname de produção embutido no repositório. Consulte [`DEPLOY.md`](DEPLOY.md) para o passo a passo e a configuração do NPM.
+
+```sh
+make deploy
+```
+
 ## Expor temporariamente com Tailscale Funnel
 
-Use o Funnel somente para um compartilhamento temporário. Instale e autentique o Tailscale na máquina host, confirme que a tailnet permite Funnel e inicie o app:
+Use o Funnel somente para um compartilhamento temporário. Instale e autentique o Tailscale na máquina host, confirme que a tailnet permite Funnel e que a porta HTTPS escolhida está livre. O serviço local pode usar uma porta diferente da porta HTTPS pública:
 
 ```sh
-mise exec -- go run .
+ADDR=:8088 mise exec -- go run .
 ```
 
-Em outro terminal, exponha a porta local 8080:
+Em outro terminal, publique o serviço local 8088 pela porta HTTPS 8443:
 
 ```sh
-tailscale funnel 8080
+tailscale funnel --https=8443 8088
 ```
 
-Use a URL HTTPS mostrada pelo Tailscale para abrir a página e criar o link; a origem pública será usada no link gerado. Verifique o link em uma janela privada/dispositivo externo antes de enviar. Ao terminar, interrompa o Funnel (`Ctrl-C` no comando interativo ou `tailscale funnel --https=443 off`, conforme a versão do cliente) e pare o servidor. Confira `tailscale funnel status` para garantir que não há endpoint publicado.
+O Funnel publica o endpoint na internet; não execute esse comando se quiser acesso somente pela tailnet. Antes, confira `tailscale funnel status` e `tailscale serve status`: uma configuração Serve já existente na porta HTTPS escolhida impede o Funnel de criar outro listener nela. Não desligue a porta sem identificar e aprovar o impacto sobre a rota existente. Use a URL HTTPS mostrada pelo Tailscale para abrir a página e criar o link; a origem pública será usada no link gerado. Ao terminar, desligue somente o listener que você criou (`tailscale funnel --https=8443 off`) e pare o servidor.
 
 ### Alternativas
 

@@ -3,6 +3,9 @@
 body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 32px 18px; background: radial-gradient(ellipse at 50% 0%, #25382a, #101713 55%); }
 main { width: min(100%, 570px); }
 header { margin-bottom: 28px; }
+.header-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.language-picker { display: flex; align-items: center; gap: 8px; margin: 0; color: #b2beb4; font-size: .82rem; }
+.language-picker select { width: auto; margin: 0; padding: 7px 30px 7px 10px; border: 1px solid #45594a; border-radius: 8px; background: #101713; color: #eff6ef; font: inherit; }
 .eyebrow { color: #99d6a2; font-size: .72rem; font-weight: 700; letter-spacing: .16em; }
 h1 { margin: 14px 0; font-size: clamp(2.5rem, 9vw, 4.4rem); line-height: .98; letter-spacing: -.06em; }
 header p, .panel p { color: #b2beb4; line-height: 1.6; }
