@@ -8,9 +8,19 @@ services:
     environment:
       ADDR: ":8080"
       SECRET_TTL: "${SECRET_TTL:-1h}"
+      ACTIVE_SECRET_LIMIT: "${ACTIVE_SECRET_LIMIT:-500}"
+      CREATE_RATE_PER_MINUTE: "${CREATE_RATE_PER_MINUTE:-60}"
+      CREATE_RATE_BURST: "${CREATE_RATE_BURST:-20}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
+      METRICS_TOKEN: "${METRICS_TOKEN:-}"
+      STORAGE_BACKEND: "${STORAGE_BACKEND:-memory}"
+      SQLITE_PATH: "${SQLITE_PATH:-}"
+      SQLITE_NO_PAYLOAD_BACKUP_ACK: "${SQLITE_NO_PAYLOAD_BACKUP_ACK:-}"
     init: true
     restart: unless-stopped
     read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
     cap_drop:
       - ALL
     security_opt:

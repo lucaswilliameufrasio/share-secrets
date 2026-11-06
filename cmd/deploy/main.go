@@ -198,6 +198,10 @@ func projectRoot() (string, error) {
 }
 
 func deploy(root, host, activeSlot, targetSlot string, targetPort int) error {
+	settings, err := deploymentSettingsFromEnvironment()
+	if err != nil {
+		return err
+	}
 	for _, command := range []string{"mise", "docker", "ssh", "curl"} {
 		if _, err := exec.LookPath(command); err != nil {
 			return fmt.Errorf("comando obrigatório não encontrado no PATH: %s", command)
@@ -231,6 +235,14 @@ func deploy(root, host, activeSlot, targetSlot string, targetPort int) error {
 		if err := checkManagedContainer(host, activeContainer, activeSlot, true); err != nil {
 			return fmt.Errorf("slot ativo: %w", err)
 		}
+		storage, err := remoteOutput(host, "docker", "inspect", "--format",
+			`{{index .Config.Labels "com.share-secrets.storage"}}|{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}|{{range .Config.Env}}{{if eq . "STORAGE_BACKEND=sqlite"}}sqlite{{end}}{{end}}`, activeContainer)
+		if err != nil {
+			return errors.New("não foi possível confirmar o armazenamento do slot ativo")
+		}
+		if err := validateActiveStorage(strings.TrimSpace(storage), settings); err != nil {
+			return err
+		}
 	} else {
 		for _, slot := range []string{"blue", "green"} {
 			container := "share-secrets-" + slot
@@ -241,6 +253,11 @@ func deploy(root, host, activeSlot, targetSlot string, targetPort int) error {
 			if exists {
 				return fmt.Errorf("o slot %s já existe; selecione o slot ativo em vez de escolher nenhum", slot)
 			}
+		}
+	}
+	if settings.sqliteDir != "" {
+		if err := remoteCommand(host, "test", "-f", filepath.Join(settings.sqliteDir, "secrets.db")); err != nil {
+			return errors.New("banco SQLite remoto não encontrado; prepare e migre o banco explicitamente antes do deploy")
 		}
 	}
 	targetContainer := "share-secrets-" + targetSlot
@@ -300,19 +317,123 @@ func deploy(root, host, activeSlot, targetSlot string, targetPort int) error {
 		"--label", "com.share-secrets.slot=" + targetSlot,
 		"--label", "com.share-secrets.release=" + image,
 		"--restart", "unless-stopped", "--read-only",
-		"--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
 		"--memory", "128m", "--cpus", "0.5", "--pids-limit", "64",
 		"--publish", fmt.Sprintf("%s:%d:8080", tailscaleAddress, targetPort),
-		"--env", "ADDR=:8080", "--env", "SECRET_TTL=" + secretTTL, image,
+		"--env", "ADDR=:8080", "--env", "SECRET_TTL=" + secretTTL,
 	}
-	if err := remoteCommand(host, "docker", arguments...); err != nil {
-		return fmt.Errorf("iniciar slot candidato %q: %w", targetSlot, err)
+	if settings.sqliteDir != "" {
+		arguments = append(arguments,
+			"--label", "com.share-secrets.storage=sqlite",
+			"--mount", "type=bind,src="+settings.sqliteDir+",dst=/data",
+			"--env", "STORAGE_BACKEND=sqlite", "--env", "SQLITE_PATH=/data/secrets.db",
+			"--env", "SQLITE_NO_PAYLOAD_BACKUP_ACK=yes", "--env", "SQLITE_TMPDIR=/tmp")
+	}
+	for _, value := range settings.runtimeVariables {
+		arguments = append(arguments, "--env", value)
+	}
+	arguments = append(arguments, image)
+	var runErr error
+	if settings.metricsToken != "" {
+		runErr = remoteRunWithEnvironmentFile(host, "METRICS_TOKEN="+settings.metricsToken+"\n", arguments...)
+	} else {
+		runErr = remoteCommand(host, "docker", arguments...)
+	}
+	if runErr != nil {
+		return fmt.Errorf("iniciar slot candidato %q: %w", targetSlot, runErr)
 	}
 	if err := waitForHealth(tailscaleAddress, targetPort); err != nil {
 		return fmt.Errorf("slot candidato não passou no health check; tráfego continua no slot anterior (%s): %w", activeContainer, err)
 	}
 	printNextSteps(tailscaleAddress, targetPort, targetSlot, activeSlot)
+	return nil
+}
+
+type deploymentSettings struct {
+	metricsToken     string
+	runtimeVariables []string
+	sqliteDir        string
+	cutoverConfirmed bool
+}
+
+func deploymentSettingsFromEnvironment() (deploymentSettings, error) {
+	settings := deploymentSettings{metricsToken: os.Getenv("METRICS_TOKEN")}
+	backend := os.Getenv("STORAGE_BACKEND")
+	if backend != "" && backend != "memory" && backend != "sqlite" {
+		return deploymentSettings{}, errors.New("STORAGE_BACKEND must be memory or sqlite")
+	}
+	if backend == "sqlite" {
+		dir := os.Getenv("SQLITE_DATA_DIR")
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir || strings.ContainsAny(dir, ",\n\r") || dir == "/" {
+			return deploymentSettings{}, errors.New("SQLITE_DATA_DIR must be a clean absolute remote directory without commas")
+		}
+		if os.Getenv("SQLITE_NO_PAYLOAD_BACKUP_ACK") != "yes" {
+			return deploymentSettings{}, errors.New("SQLite requires SQLITE_NO_PAYLOAD_BACKUP_ACK=yes")
+		}
+		settings.sqliteDir = dir
+		settings.cutoverConfirmed = os.Getenv("SQLITE_VOLATILE_CUTOVER_ACK") == "yes"
+	}
+	if settings.metricsToken != "" && (len(settings.metricsToken) < 32 || strings.ContainsAny(settings.metricsToken, " \t\r\n")) {
+		return deploymentSettings{}, errors.New("METRICS_TOKEN must contain at least 32 characters and no whitespace")
+	}
+	for _, setting := range []struct {
+		name string
+		min  int
+		max  int
+	}{
+		{name: "ACTIVE_SECRET_LIMIT", min: 1, max: 700},
+		{name: "CREATE_RATE_PER_MINUTE", min: 1, max: 100_000},
+		{name: "CREATE_RATE_BURST", min: 1, max: 100_000},
+	} {
+		value := os.Getenv(setting.name)
+		if value == "" {
+			continue
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < setting.min || parsed > setting.max {
+			return deploymentSettings{}, fmt.Errorf("%s is outside its allowed range", setting.name)
+		}
+		settings.runtimeVariables = append(settings.runtimeVariables, setting.name+"="+value)
+	}
+	trustedProxies := os.Getenv("TRUSTED_PROXIES")
+	if trustedProxies != "" {
+		for _, entry := range strings.Split(trustedProxies, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			if net.ParseIP(entry) == nil {
+				if _, _, err := net.ParseCIDR(entry); err != nil {
+					return deploymentSettings{}, errors.New("TRUSTED_PROXIES must contain IP addresses or CIDRs")
+				}
+			}
+		}
+		settings.runtimeVariables = append(settings.runtimeVariables, "TRUSTED_PROXIES="+trustedProxies)
+	}
+	return settings, nil
+}
+
+func validateActiveStorage(active string, settings deploymentSettings) error {
+	parts := strings.SplitN(active, "|", 3)
+	if len(parts) != 3 {
+		return errors.New("não foi possível validar a configuração de armazenamento do slot ativo")
+	}
+	switch parts[0] {
+	case "", "<no value>", "memory":
+		if parts[2] != "" {
+			return errors.New("slot ativo tem backend SQLite sem rótulo reconhecido; interrompendo para inspeção manual")
+		}
+		if settings.sqliteDir != "" && !settings.cutoverConfirmed {
+			return errors.New("troca de memória para SQLite invalida links antigos; confirme com SQLITE_VOLATILE_CUTOVER_ACK=yes")
+		}
+	case "sqlite":
+		if parts[2] != "sqlite" || settings.sqliteDir == "" || settings.sqliteDir != parts[1] {
+			return errors.New("slot ativo usa SQLite: informe o mesmo SQLITE_DATA_DIR e não troque para memória")
+		}
+	default:
+		return errors.New("backend de armazenamento do slot ativo é desconhecido")
+	}
 	return nil
 }
 
@@ -505,6 +626,34 @@ func remoteCommand(host, name string, arguments ...string) error {
 	remote := append([]string{name}, arguments...)
 	quoted := shellQuoteArgs(remote)
 	return runCommand("ssh", append([]string{"-o", "BatchMode=yes", host}, quoted...)...)
+}
+
+func remoteRunWithEnvironmentFile(host, environmentFile string, arguments ...string) error {
+	script, err := dockerRunEnvironmentFileScript(arguments...)
+	if err != nil {
+		return err
+	}
+	remoteCommand := strings.Join(shellQuoteArgs([]string{"sh", "-c", script}), " ")
+	// #nosec G204 -- The host is validated, Docker args are quoted, and secrets travel over stdin.
+	command := exec.Command("ssh", "-o", "BatchMode=yes", host, remoteCommand)
+	command.Stdin = strings.NewReader(environmentFile)
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("ssh remote execution: %w", err)
+	}
+	return nil
+}
+
+func dockerRunEnvironmentFileScript(arguments ...string) (string, error) {
+	if len(arguments) < 2 {
+		return "", errors.New("docker run requires options and an image")
+	}
+	remotePrefix := append([]string{"docker"}, arguments[:len(arguments)-1]...)
+	quotedPrefix := strings.Join(shellQuoteArgs(remotePrefix), " ")
+	quotedImage := shellQuoteArgs([]string{arguments[len(arguments)-1]})[0]
+	return "set -eu\numask 077\nenv_file=$(mktemp)\ntrap 'rm -f \"$env_file\"' EXIT\ncat > \"$env_file\"\n" +
+		quotedPrefix + " --env-file \"$env_file\" " + quotedImage + "\n", nil
 }
 
 func runRemoteScript(host, script string, arguments ...string) error {

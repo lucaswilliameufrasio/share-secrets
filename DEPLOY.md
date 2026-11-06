@@ -19,6 +19,8 @@ Este deploy usa dois slots Docker rootless na VPS do app e o Nginx Proxy Manager
 
 O alias é solicitado pela CLI em cada execução. O endereço do host nunca é salvo no código ou em configuração do projeto.
 
+Opcionalmente, carregue `METRICS_TOKEN` de um gerenciador de segredos no ambiente do operador antes de `make deploy` para habilitar métricas agregadas; use um valor com pelo menos 32 caracteres e sem espaços. A CLI envia esse valor pela entrada padrão do SSH em um arquivo temporário protegido e o remove após criar o contêiner, sem colocá-lo nos argumentos/logs. O Docker mantém o valor na configuração do contêiner, portanto usuários com acesso administrativo ao daemon remoto podem inspecioná-lo. Configure também `TRUSTED_PROXIES` com o IP/CIDR exato do NPM para que o rate limit por cliente use o cabeçalho encaminhado; `ACTIVE_SECRET_LIMIT` (1–700), `CREATE_RATE_PER_MINUTE` e `CREATE_RATE_BURST` podem ser fornecidos no ambiente do operador.
+
 ## Primeiro deploy
 
 Execute no checkout do projeto:
@@ -63,6 +65,46 @@ Se já existir um container reconhecido no slot inativo, a CLI pede confirmaçã
 ## Dados em memória e rollback
 
 Cada slot tem seu próprio armazenamento volátil. A troca de rota não migra segredos entre slots: links criados no slot anterior deixam de funcionar enquanto o NPM aponta para o novo. Um rollback também não recupera links criados no novo slot. Reiniciar um slot apaga os segredos que ele mantinha. Evite usar o app para segredos importantes ou de longa duração.
+
+### SQLite opcional — integração em validação
+
+O alvo segue uma VPS, com SQLite/modernc e PostgreSQL open-source como opção
+futura: consulte [`docs/roadmap.md`](docs/roadmap.md). O backend SQLite e sua
+integração na CLI estão em validação: **a campanha atual falhou sob carga** e
+não confirma prontidão para produção. Não execute estes passos sem finalizar a
+validação e sem autorização específica para a alteração na VPS.
+
+O operador precisa preparar previamente um diretório absoluto no filesystem
+local da VPS, com permissões para UID 65532 do contêiner rootless e exclusão de
+backups/snapshots. A pasta inteira contém DB, WAL e SHM; todos são sensíveis.
+O arquivo `secrets.db` deve ser previamente criado/migrado uma única vez com o
+Goose pinado, usando `-env none` e a migration do mesmo release. O servidor
+recusa schema incompatível; a CLI **não migra** nem altera permissões.
+
+Para um deploy autorizado, configure `STORAGE_BACKEND=sqlite`,
+`SQLITE_DATA_DIR` (caminho absoluto da pasta na VPS) e
+`SQLITE_NO_PAYLOAD_BACKUP_ACK=yes` no ambiente do operador antes de
+`make deploy`. A CLI verifica a presença do banco e monta a mesma pasta no
+slot candidato. Se o slot ativo já usa SQLite, a CLI recusa um diretório
+diferente ou troca silenciosa para memória. A migração inicial de um slot
+volátil exige também `SQLITE_VOLATILE_CUTOVER_ACK=yes`: links do slot antigo
+não serão migrados e uma volta ao release volátil não recupera links novos.
+Versões de schema devem permanecer compatíveis entre os dois slots durante o
+rollback; não suponha que voltar a imagem reverte uma migration.
+
+A inspeção da pasta/arquivo e a confirmação não provam que o backup do host ou
+do provedor está excluído, que os dados são íntegros ou que dois deploys
+simultâneos estão coordenados. Serialize os deploys operacionalmente. O health
+check cobre startup, não prova fluxo de leitura/consumo, exclusão física nem
+capacidade de carga. A política de rollback e migração deve ser avaliada antes
+de cada release.
+
+Antes de persistir payloads, acordar a política de exclusão e backups em
+[`docs/storage-and-erasure.md`](docs/storage-and-erasure.md). Snapshots da VPS,
+backups do volume, swap e dumps são cópias distintas; apagar uma linha não as
+limpa. Não criar promessa de apagamento integral nem restaurar backups em
+produção como teste. Limites de CPU/RAM e quantidade de links não são evidência
+de capacidade: veja [`docs/performance.md`](docs/performance.md).
 
 ## Diagnóstico
 

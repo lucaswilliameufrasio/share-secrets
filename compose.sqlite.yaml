@@ -1,0 +1,13 @@
+# Optional operator-supplied local directory; the database must already be
+# migrated and excluded from every backup and VM/provider snapshot.
+services:
+  app:
+    environment:
+      STORAGE_BACKEND: sqlite
+      SQLITE_PATH: /data/secrets.db
+      SQLITE_NO_PAYLOAD_BACKUP_ACK: "${SQLITE_NO_PAYLOAD_BACKUP_ACK:?Exclude the database directory from backups and snapshots and set this to yes}"
+      SQLITE_TMPDIR: /tmp
+    volumes:
+      - type: bind
+        source: "${SQLITE_DATA_DIR:?Set SQLITE_DATA_DIR to the pre-created local database directory}"
+        target: /data

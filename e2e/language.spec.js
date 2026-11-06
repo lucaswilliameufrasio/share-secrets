@@ -32,3 +32,34 @@ test('permite trocar de inglês para português sem perder o conteúdo digitado'
   await expect(page.locator('#create-button')).toHaveText('Criar link descartável');
   await expect(page.locator('#secret')).toHaveValue('conteúdo de teste');
 });
+
+test('instala o service worker de rede e não oferece cache offline', async ({ page, context }) => {
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+
+  const manifest = await page.evaluate(async () => {
+    const response = await fetch('/manifest.webmanifest', { cache: 'no-store' });
+    return response.json();
+  });
+  expect(manifest.display).toBe('standalone');
+  expect(manifest.start_url).toBe('/');
+  expect(manifest.icons.some((icon) => icon.sizes === '192x192')).toBe(true);
+  expect(manifest.icons.some((icon) => icon.sizes === '512x512')).toBe(true);
+
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  await context.setOffline(true);
+  const offlineFetch = await page.evaluate(async () => {
+    try {
+      await fetch('/api/config', { cache: 'no-store' });
+      return 'available';
+    } catch {
+      return 'offline';
+    }
+  });
+  expect(offlineFetch).toBe('offline');
+  await context.setOffline(false);
+});

@@ -4,7 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" content="#101713">
     <title>Share a secret</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <link rel="stylesheet" href="/style.css">
     <script src="/app.js" defer></script>
   </head>
@@ -24,18 +28,40 @@
         <h1><span data-i18n="headlineFirst">One secret.</span><br><span data-i18n="headlineSecond">One read.</span></h1>
         <p data-i18n="intro">The content is encrypted in this browser. The server only receives encrypted data and deletes the link after it is opened.</p>
       </header>
-      <section id="create-view" class="panel">
-        <label for="secret" data-i18n="secretLabel">Secret</label>
-        <textarea id="secret" rows="7" data-i18n-placeholder="secretPlaceholder" placeholder="Paste a credential or message" autocomplete="off" spellcheck="false"></textarea>
-        <button id="create-button" type="button" data-i18n="createButton">Create one-time link</button>
-        <p class="hint" data-i18n="expiryHint">Expires in 1 hour. Send the link through a private channel.</p>
-      </section>
+      <div id="create-view">
+        <section class="panel">
+          <label for="secret" data-i18n="secretLabel">Secret</label>
+          <textarea id="secret" rows="7" data-i18n-placeholder="secretPlaceholder" placeholder="Paste a credential or message" autocomplete="off" spellcheck="false"></textarea>
+          <label for="ttl-minutes" data-i18n="ttlLabel">Link validity (minutes)</label>
+          <input id="ttl-minutes" type="number" min="1" max="1440" step="1" inputmode="numeric" data-i18n-placeholder="ttlPlaceholder" placeholder="Use server default">
+          <button id="create-button" type="button" data-i18n="createButton">Create one-time link</button>
+          <p id="expiry-hint" class="hint" data-i18n="expiryHint">Use the server default, or choose a shorter validity. Send the link through a private channel.</p>
+        </section>
+        <details class="panel metrics-panel">
+          <summary data-i18n="metricsTitle">Usage metrics</summary>
+          <p class="hint" data-i18n="metricsDescription">Operational totals are private and reset when this server restarts.</p>
+          <label for="metrics-token" data-i18n="metricsTokenLabel">Metrics access token</label>
+          <input id="metrics-token" type="password" autocomplete="off" data-i18n-placeholder="metricsTokenPlaceholder" placeholder="Enter the server metrics token">
+          <button id="load-metrics" class="secondary" type="button" data-i18n="loadMetricsButton">Load metrics</button>
+          <p id="metrics-status" class="hint" role="status" aria-live="polite"></p>
+          <dl id="metrics-values" hidden></dl>
+        </details>
+      </div>
       <section id="result-view" class="panel" hidden>
         <h2 data-i18n="resultTitle">Your link is ready</h2><p data-i18n="resultDescription">Copy and send it to the recipient. It can only be opened once.</p>
         <input id="share-link" readonly data-i18n-aria-label="shareLinkLabel" aria-label="Shareable link"><button id="copy-button" type="button" data-i18n="copyButton">Copy link</button>
       </section>
-      <section id="open-view" class="panel" hidden><h2 data-i18n="openedTitle">Secret received</h2><pre id="opened-secret"></pre><p class="hint" data-i18n="openedHint">This content was removed from the server and cannot be opened again.</p></section>
+      <section id="tracking-view" class="panel tracking-panel">
+        <div class="section-heading">
+          <div><h2 data-i18n="trackingTitle">Links created in this browser</h2><p data-i18n="trackingDescription">The decryption keys are not saved here. Status updates automatically.</p></div>
+          <button id="refresh-links" class="secondary" type="button" data-i18n="refreshButton">Refresh</button>
+        </div>
+        <p id="tracking-summary" class="hint" data-i18n="trackingEmpty">No links are being tracked yet.</p>
+        <ol id="tracked-links"></ol>
+      </section>
+      <section id="open-view" class="panel" hidden><div id="opened-result" hidden><h2 data-i18n="openedTitle">Secret received</h2><pre id="opened-secret"></pre><p class="hint" data-i18n="openedHint">This content was removed from the server and cannot be opened again.</p></div><p id="recovery-status" class="hint" role="status" aria-live="polite"></p></section>
       <p id="status" role="status" aria-live="polite"></p>
+      <p id="pwa-status" class="hint" data-i18n="onlineOnly">This app requires a network connection; it does not work offline.</p>
     </main>
   </body>
 </html>
